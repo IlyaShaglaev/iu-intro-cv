@@ -1,85 +1,32 @@
 name: ci
 
-# Гарантия, что выданный студентам код запускается. Единственное, что защищает
-# от «а у преподавателя работало»: всё прогоняется на чистой машине.
+# Те же 11 тестов, что и локально: pytest tests -q. Красный CI — функция не написана
+# или сломана; зелёный — половина работы сделана, остальное — фото, числа, отчёт.
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
 jobs:
-  notebooks:
+  tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       MPLBACKEND: Agg
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
       - name: Установка зависимостей
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nbconvert nbformat jupyter
-
-      - name: Окружение и версия OpenCV
-        run: python tools/check_env.py
-
-      - name: Тесты библиотеки cvcourse
-        run: pytest tests/ -q
-
-      - name: Прогон опубликованных решений
-        # Решение появляется здесь сразу после занятия (до этого живёт в iu-intro-cv-ta,
-        # где его гоняет свой CI); пока решений нет — шаг пуст, это не ошибка.
-        env:
-          CVCOURSE_CACHE: ${{ runner.temp }}/cvcourse-cache
-        run: |
-          fail=0
-          shopt -s nullglob
-          for nb in labs/*/lab*_solution.ipynb; do
-            echo "::group::$nb"
-            if ! jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=600 "$nb"; then
-              echo "::error file=$nb::решение не выполнилось"
-              fail=1
-            fi
-            echo "::endgroup::"
-          done
-          exit $fail
-
-      - name: Заготовки доходят до первого TODO
-        run: python tools/check_starters.py
-
-      - name: Тесты занятий
-        # До публикации решения тесты идут против заготовки и пропускаются
-        # (незаполненный TODO — skip, не fail).
-        run: |
-          shopt -s nullglob
-          for d in labs/*/tests; do
-            pytest "$d" -q || exit 1
-          done
-
-  decks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install python-pptx Pillow lxml
-      - name: Линтер колод
-        # Исходники колод живут в приватном репозитории; в публичном шаг
-        # пропускается, а не падает.
-        run: |
-          if [ -d ../iu-intro-cv-private/deck-template ]; then
-            cd ../iu-intro-cv-private/deck-template
-            python -m deckgen.build --lint-only L*.md
-          else
-            echo "исходники колод в приватном репозитории — шаг пропущен"
-          fi
+      - name: Версия OpenCV
+        run: python -c "import cv2; assert cv2.__version__ == '4.14.0', cv2.__version__; print(cv2.__version__)"
+      - name: Тесты
+        run: pytest homeworks/hw1-photolab/tests -q
+        working-directory: homeworks/hw1-photolab
