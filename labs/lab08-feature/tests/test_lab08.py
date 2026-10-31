@@ -185,4 +185,4 @@ def test_repeatability_rotation_invariance(sol, scene):
     need(sol, "repeatability", "harris_response", "moment_matrix")
     img = scene.astype(np.float64)
     rep = sol["repeatability"](img, angle=30, block_size=7, ksize=3, k=0.04, threshold_frac=0.01)
-    assert rep > 0.2, "при повороте на 30° повторяемость Харриса должна быть > 0.2 (сейчас %.2f)" % rep
+    assert rep > 0.2, "при повороте на 30° повторяемость Харриса должна быть > 0.2 (сейчас %.2f)" % rep  
