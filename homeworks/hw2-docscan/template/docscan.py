@@ -91,7 +91,8 @@ def estimate_noise(gray):
     g = gray.astype(np.float32)
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 2–3 строки: cv2.filter2D(g, -1, NOISE_KERNEL) без крайних строк и столбцов → median(|r|) / 0.6745 / 6
-    raise NotImplementedError("TODO 1")
+    r = cv2.filter2D(g, -1, NOISE_KERNEL)[1:-1, 1:-1]
+    return float(np.median(np.abs(r)) / 0.6745 / 6.0)
     # ───────────────────────────────────────────────────────────
 
 
@@ -103,7 +104,9 @@ def denoise(gray, noise_sigma, target=1.0, lo=1.0, hi=3.0):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 2–3 строки: sigma_f = noise_sigma / (2·sqrt(π)·target), обрезать np.clip в [lo, hi]; cv2.GaussianBlur(gray, (0, 0), sigma_f)
-    raise NotImplementedError("TODO 2")
+    sigma_f = noise_sigma / (2.0 * np.sqrt(np.pi) * target)
+    sigma_f = float(np.clip(sigma_f, lo, hi))
+    return cv2.GaussianBlur(gray, (0, 0), sigma_f), sigma_f
     # ───────────────────────────────────────────────────────────
 
 
@@ -133,7 +136,10 @@ def auto_canny(gray, k=0.33):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 3–4 строки: m = np.median(gray); lo и hi — целые, обрезанные в [0, 255]; cv2.Canny(gray, lo, hi, L2gradient=True)
-    raise NotImplementedError("TODO 3")
+    m = float(np.median(gray))
+    lo = int(np.clip((1.0 - k) * m, 0, 255))
+    hi = int(np.clip((1.0 + k) * m, 0, 255))
+    return cv2.Canny(gray, lo, hi, L2gradient=True), (lo, hi)
     # ───────────────────────────────────────────────────────────
 
 
@@ -149,7 +155,18 @@ def quad_from_contours(edges, min_area=0.10, eps=0.02, close_k=5, top=5):
     h, w = edges.shape[:2]
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 8–10 строк: morphologyEx(MORPH_CLOSE) ядром close_k; findContours(RETR_LIST, CHAIN_APPROX_SIMPLE)[-2]; сортировка по contourArea; approxPolyDP; len == 4, isContourConvex, площадь
-    raise NotImplementedError("TODO 4")
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((close_k, close_k), np.uint8))
+    contours = cv2.findContours(closed, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[-2]
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:top]
+    min_px = min_area * h * w
+    for c in contours:
+        peri = cv2.arcLength(c, True)
+        if peri <= 0:
+            continue
+        approx = cv2.approxPolyDP(c, eps * peri, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx) and cv2.contourArea(approx) >= min_px:
+            return np.float32(approx.reshape(4, 2))
+    return None
     # ───────────────────────────────────────────────────────────
 
 
@@ -180,7 +197,13 @@ def line_through(p, q):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 3–4 строки: np.cross((x1, y1, 1), (x2, y2, 1)); поделить на hypot(a, b); если hypot ≈ 0 — None
-    raise NotImplementedError("TODO 5")
+    p = np.asarray(p, np.float64).reshape(-1)
+    q = np.asarray(q, np.float64).reshape(-1)
+    l = np.cross([p[0], p[1], 1.0], [q[0], q[1], 1.0])
+    n = np.hypot(l[0], l[1])
+    if n < 1e-12:
+        return None
+    return l / n
     # ───────────────────────────────────────────────────────────
 
 
@@ -188,7 +211,10 @@ def intersect(l1, l2):
     """Точка пересечения двух прямых (x, y) — векторное произведение (L4); параллельные → None."""
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 2–3 строки: x = np.cross(l1, l2); если |x[2]| < 1e-9 — None; иначе x[:2] / x[2]
-    raise NotImplementedError("TODO 6")
+    x = np.cross(np.asarray(l1, np.float64), np.asarray(l2, np.float64))
+    if abs(x[2]) < 1e-9:
+        return None
+    return np.float64(x[:2] / x[2])
     # ───────────────────────────────────────────────────────────
 
 
@@ -217,7 +243,22 @@ def ransac_line(pts, thr=2.0, iters=200, rng=None):
         return None, None
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 10–12 строк: цикл iters; i, j = rng.integers(0, n, 2); line_through (None — пропустить); point_line_dist < thr; запомнить лучшую маску; fit_line(pts[best]); пересчитать маску
-    raise NotImplementedError("TODO 7")
+    best_mask, best_count = None, -1
+    for _ in range(iters):
+        i, j = rng.integers(0, n, 2)
+        if i == j:
+            continue
+        line = line_through(pts[i], pts[j])
+        if line is None:
+            continue
+        mask = point_line_dist(pts, line) < thr
+        c = int(mask.sum())
+        if c > best_count:
+            best_count, best_mask = c, mask
+    if best_mask is None or best_count < 2:
+        return None, None
+    line = fit_line(pts[best_mask])
+    return line, point_line_dist(pts, line) < thr
     # ───────────────────────────────────────────────────────────
 
 
@@ -229,7 +270,17 @@ def dominant_lines(pts, n_lines=4, thr=2.0, iters=200, min_inliers=25, clear=3.0
     rng = rng or np.random.default_rng(0)
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 7–9 строк: цикл до n_lines; ransac_line на оставшихся; мало инлаеров — стоп; запомнить; оставить точки дальше clear · thr от найденной прямой
-    raise NotImplementedError("TODO 8")
+    remaining = np.asarray(pts, np.float32).copy()
+    lines = []
+    for _ in range(n_lines):
+        if len(remaining) < min_inliers:
+            break
+        line, mask = ransac_line(remaining, thr, iters, rng)
+        if line is None or int(mask.sum()) < min_inliers:
+            break
+        lines.append(line)
+        remaining = remaining[point_line_dist(remaining, line) > clear * thr]
+    return lines
     # ───────────────────────────────────────────────────────────
 
 
@@ -252,7 +303,35 @@ def quad_from_lines(lines, shape, margin=0.05, min_area=0.10):
     h, w = shape[:2]
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 12–15 строк: itertools.combinations(range(len(lines)), 4); три разбиения на пары; четыре intersect; все в кадре ± margin; order_corners; is_convex_quad; cv2.contourArea ≥ min_area·h·w
-    raise NotImplementedError("TODO 9")
+    if len(lines) < 4:
+        return None
+    min_px = min_area * h * w
+    mx, my = margin * w, margin * h
+    for combo in itertools.combinations(range(len(lines)), 4):
+        ls = [lines[i] for i in combo]
+        for a_set, b_set in (([0, 1], [2, 3]), ([0, 2], [1, 3]), ([0, 3], [1, 2])):
+            corners, ok = [], True
+            for a in a_set:
+                for b in b_set:
+                    x = intersect(ls[a], ls[b])
+                    if x is None:
+                        ok = False
+                        break
+                    corners.append(x)
+                if not ok:
+                    break
+            if not ok:
+                continue
+            corners = np.float32(corners)
+            if not np.all((corners[:, 0] >= -mx) & (corners[:, 0] <= w + mx) &
+                          (corners[:, 1] >= -my) & (corners[:, 1] <= h + my)):
+                continue
+            q = order_corners(corners)
+            if not is_convex_quad(q):
+                continue
+            if cv2.contourArea(q.reshape(-1, 1, 2)) >= min_px:
+                return q
+    return None
     # ───────────────────────────────────────────────────────────
 
 
@@ -276,7 +355,12 @@ def order_corners(pts):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 3–4 строки: центроид; np.arctan2(dy, dx) → argsort (ось y вниз: по возрастанию угла — по часовой); np.roll так, чтобы первым стал argmin(x + y)
-    raise NotImplementedError("TODO 10")
+    pts = np.asarray(pts, np.float32).reshape(4, 2)
+    c = pts.mean(0)
+    ang = np.arctan2(pts[:, 1] - c[1], pts[:, 0] - c[0])
+    ordered = pts[np.argsort(ang)]
+    idx = int(np.argmin(ordered[:, 0] + ordered[:, 1]))
+    return np.roll(ordered, -idx, axis=0).astype(np.float32)
     # ───────────────────────────────────────────────────────────
 
 
@@ -287,7 +371,22 @@ def rectify(img, corners, size=None, aspect=None):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 9–12 строк: order_corners; длины четырёх сторон; W и H по правилу выше; dst = углы (0, 0) … (W − 1, H − 1); getPerspectiveTransform; warpPerspective (W, H), BORDER_REPLICATE
-    raise NotImplementedError("TODO 11")
+    pts = order_corners(corners).astype(np.float32)
+    tl, tr, br, bl = pts
+    wt = float(np.linalg.norm(tr - tl)); wb = float(np.linalg.norm(br - bl))
+    hl = float(np.linalg.norm(bl - tl)); hr = float(np.linalg.norm(br - tr))
+    if size is not None:
+        W, Hh = int(size[0]), int(size[1])
+    elif aspect is not None:
+        W_f = max(wt, wb, aspect * hl, aspect * hr)
+        W = int(round(W_f)); Hh = int(round(W_f / aspect))
+    else:
+        W = int(round(max(wt, wb))); Hh = int(round(max(hl, hr)))
+    W, Hh = max(W, 1), max(Hh, 1)
+    dst = np.float32([[0, 0], [W - 1, 0], [W - 1, Hh - 1], [0, Hh - 1]])
+    M = cv2.getPerspectiveTransform(pts, dst)
+    out = cv2.warpPerspective(img, M, (W, Hh), borderMode=cv2.BORDER_REPLICATE)
+    return out, M
     # ───────────────────────────────────────────────────────────
 
 
@@ -297,7 +396,12 @@ def quad_iou(q1, q2, shape):
         return 0.0
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 5–6 строк: две маски np.zeros(shape[:2], uint8); cv2.fillConvexPoly углами order_corners (int32, округлить); IoU = пересечение / объединение
-    raise NotImplementedError("TODO 12")
+    h, w = shape[:2]
+    m1 = np.zeros((h, w), np.uint8); m2 = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(m1, np.int32(np.round(order_corners(q1))), 1)
+    cv2.fillConvexPoly(m2, np.int32(np.round(order_corners(q2))), 1)
+    u = int(np.logical_or(m1, m2).sum())
+    return 0.0 if u == 0 else float(np.logical_and(m1, m2).sum()) / u
     # ───────────────────────────────────────────────────────────
 
 
@@ -312,7 +416,9 @@ def remove_shadows(gray, k=51):
     """
     # ───────────────────────── ВАШ КОД ─────────────────────────
     # 2–3 строки: bg = cv2.medianBlur(gray, k); деление во float32 (фон не меньше 1); as_uint8(255 · gray / bg)
-    raise NotImplementedError("TODO 13")
+    bg = cv2.medianBlur(gray, k).astype(np.float32)
+    bg = np.maximum(bg, 1.0)
+    return as_uint8(255.0 * gray.astype(np.float32) / bg)
     # ───────────────────────────────────────────────────────────
 
 
@@ -374,8 +480,17 @@ def detect(img, method="auto", long_side=640, canny="auto", k=0.33, close_k=9, p
     gray, scale = work_image(img, long_side)
     edges, info = edge_map(gray, canny, k, close_k)
     quad, path = None, None
+    h, w = gray.shape[:2]
     for m in (("contour", "hough") if method == "auto" else (method,)):
         q = quad_from_contours(edges) if m == "contour" else quad_from_hough(edges, seed=seed)
+        if q is not None:
+            q_ordered = order_corners(q)
+
+            touches_border = np.any(q_ordered < 2) or np.any(q_ordered[:, 0] > w - 3) or np.any(q_ordered[:, 1] > h - 3)
+
+            if touches_border:
+                q = None 
+                
         if q is not None and (not paper_check or looks_like_paper(gray, q)):
             quad, path = order_corners(to_full(q, scale)), m
             break
@@ -419,7 +534,7 @@ def pick_corners(img, title="4 klika po uglam lista | Enter - gotovo | r - zanov
         if event == cv2.EVENT_LBUTTONDOWN and len(pts) < 4:
             pts.append((x / scale, y / scale))
 
-    cv2.namedWindow(title); cv2.setMouseCallback(title, on_click)
+    cv2.namedWindow(title, cv2.WINDOW_NORMAL); cv2.setMouseCallback(title, on_click)
     while True:
         view = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
         for p in pts:
