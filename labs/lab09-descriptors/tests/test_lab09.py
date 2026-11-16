@@ -10,9 +10,12 @@
 
 Данные синтетические: ни фото лекции, ни сеть тестам не нужны.
 """
+import ast
 import io
 import json
 import os
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -50,14 +53,12 @@ def sol():
         hit = [w for w in WANTED if "def %s(" % w in src]
         if not hit:
             continue
-        sep = "\n" * 3
-        for chunk in src.split(sep):
-            exec(compile(chunk, "<lab09>", "exec"), g)
-            defined = [w for w in hit if "def %s(" % w in chunk]
-            if defined:
-                if "NotImplementedError" in chunk:
-                    g["__todo__"].update(defined)
-                    break
+        # Исполняем определения, а не следующие за ними демонстрации с desc1/kp1.
+        for node in ast.parse(src).body:
+            if isinstance(node, ast.FunctionDef) and node.name in WANTED:
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "<lab09>", "exec"), g)
+                if "NotImplementedError" in ast.get_source_segment(src, node):
+                    g["__todo__"].add(node.name)
     for name in WANTED:
         if name not in g:
             pytest.skip("в ноутбуке нет функции %s" % name)
@@ -91,7 +92,8 @@ def scene_pair(scene):
     M = cv2.getRotationMatrix2D((w / 2, h / 2), 30, 1.3)
     rotated = cv2.warpAffine(scene, M, (w, h), flags=cv2.INTER_LINEAR,
                              borderMode=cv2.BORDER_REPLICATE)
-    return scene.astype(np.float32), rotated.astype(np.float32)
+    # SIFT/ORB принимают uint8; float32 нужен SIFT-дескрипторам, не изображениям.
+    return scene.copy(), rotated
 
 
 @pytest.fixture(scope="module")
@@ -109,6 +111,30 @@ def test_environment():
     assert cv2.__version__.startswith("4.14"), (
         "Курс собран на OpenCV 4.14.0.94, найдено " + cv2.__version__)
     assert hasattr(cv2, "ximgproc"), "нужен opencv-contrib-python, а не opencv-python"
+
+
+@pytest.mark.parametrize('source', ['lecture', 'synthetic'])
+def test_setup_and_sift_before_first_todo(source):
+    """Реальные ячейки setup/SIFT должны работать и в незаполненном стартере, без сети."""
+    if NB is None:
+        pytest.skip('ноутбук не найден')
+    from cvcourse import io as cio
+    nb = json.loads(Path(NB).read_text(encoding='utf-8'))
+    g = dict(cv2=cv2, np=np, os=os, cio=cio, viz=SimpleNamespace(grid=lambda *a, **k: None))
+    photo = Path(HERE).parents[1] / 'lectures/L05-filtering/demo/iu-building.jpg'
+    def load_photo():
+        if source == 'lecture':
+            return cio.imread(photo, 'gray'), 'lecture'
+        return g['synthetic_photo'](), 'synthetic'
+    g['load_photo'] = load_photo
+    # Оставляем код загрузки данных/кропов, подменяем только источник фото.
+    setup = ast.parse(''.join(nb['cells'][4]['source']))
+    setup.body = [n for n in setup.body if not (isinstance(n, ast.FunctionDef) and n.name == 'load_photo')]
+    exec(compile(setup, '<lab09 setup>', 'exec'), g)
+    assert g['crop1'].dtype == g['crop2'].dtype == np.uint8
+    exec(compile(''.join(nb['cells'][6]['source']), '<lab09 SIFT example>', 'exec'), g)
+    assert len(g['kp1']) >= 4 and len(g['kp2']) >= 4
+    assert g['desc1'].dtype == g['desc2'].dtype == np.float32
 
 
 def test_bf_match_returns_dmatch_list(sol, sift_descriptors):
@@ -175,6 +201,23 @@ def test_verify_matches_inliers_subset(sol, sift_descriptors):
     _, _, inliers = sol["verify_matches"](kp1, kp2, matches, ransac_thresh=3.0)
     assert len(inliers) <= len(matches), "RANSAC не может добавить совпадения"
     assert len(inliers) > 0, "после RANSAC должны остаться инлайеры"
+
+
+def test_verification_cell_draws_numpy_mask(sol, scene_pair, sift_descriptors):
+    """Реальный drawMatches из ячейки должен принимать полученную маску RANSAC."""
+    need(sol, 'verify_matches', 'bf_match_with_ratio')
+    kp1, kp2, desc1, desc2 = sift_descriptors
+    matches = sol['bf_match_with_ratio'](desc1, desc2)
+    _, mask, _ = sol['verify_matches'](kp1, kp2, matches)
+    assert mask is not None
+    nb = json.loads(Path(NB).read_text(encoding='utf-8'))
+    nodes = ast.parse(''.join(nb['cells'][16]['source'])).body
+    drawing = next(n for n in nodes if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == 'vis' for t in n.targets))
+    g = dict(cv2=cv2, np=np, crop1=scene_pair[0], crop2=scene_pair[1],
+             kp1=kp1, kp2=kp2, good_matches=matches, mask=mask)
+    exec(compile(ast.Module(body=[drawing], type_ignores=[]), '<lab09 drawing>', 'exec'), g)
+    assert g['vis'].dtype == np.uint8
 
 
 def test_match_pipeline_sift(sol, scene_pair):
