@@ -1,0 +1,47 @@
+{
+  "dlt": {
+    "frobenius": 5.392478105003877e-15,
+    "passed": true
+  },
+  "panorama": {
+    "shape": [
+      182,
+      700,
+      3
+    ],
+    "pairs": [
+      {
+        "pair": [
+          1,
+          0
+        ],
+        "matches": 465,
+        "inlier_ratio": 1.0,
+        "reprojection_px": 0.0014272052371899937
+      },
+      {
+        "pair": [
+          2,
+          1
+        ],
+        "matches": 482,
+        "inlier_ratio": 1.0,
+        "reprojection_px": 0.0007296408221951599
+      },
+      {
+        "pair": [
+          3,
+          2
+        ],
+        "matches": 442,
+        "inlier_ratio": 0.997737556561086,
+        "reprojection_px": 0.001688537822969855
+      }
+    ]
+  },
+  "ar": {
+    "frames": 12,
+    "tracked": 12,
+    "fps": 17.673962232846552
+  }
+}
