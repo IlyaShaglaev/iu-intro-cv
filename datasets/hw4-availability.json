@@ -1,0 +1,43 @@
+{
+  "checked_on": "2026-11-16",
+  "method": "HEAD",
+  "archives_downloaded": false,
+  "results": [
+    {
+      "dataset": "middlebury-motorcycle",
+      "state": "available",
+      "status": 200,
+      "url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Motorcycle-perfect.zip",
+      "final_url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Motorcycle-perfect.zip",
+      "content_type": "application/zip",
+      "content_length": "105123861"
+    },
+    {
+      "dataset": "middlebury-piano",
+      "state": "available",
+      "status": 200,
+      "url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Piano-perfect.zip",
+      "final_url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Piano-perfect.zip",
+      "content_type": "application/zip",
+      "content_length": "94563379"
+    },
+    {
+      "dataset": "middlebury-pipes",
+      "state": "available",
+      "status": 200,
+      "url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Pipes-perfect.zip",
+      "final_url": "https://vision.middlebury.edu/stereo/data/scenes2014/zip/Pipes-perfect.zip",
+      "content_type": "application/zip",
+      "content_length": "103057103"
+    },
+    {
+      "dataset": "kitti-stereo-2015-10",
+      "state": "registration_required",
+      "status": 200,
+      "url": "https://www.cvlibs.net/datasets/kitti/user_login.php",
+      "final_url": "https://www.cvlibs.net/datasets/kitti/user_login.php",
+      "content_type": "text/html; charset=UTF-8",
+      "content_length": null
+    }
+  ]
+}
